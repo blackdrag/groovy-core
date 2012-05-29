@@ -18,6 +18,7 @@ package org.codehaus.groovy.classgen.asm.indy;
 import java.lang.invoke.*;
 import java.lang.invoke.MethodHandles.Lookup;
 
+import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.MethodNode;
@@ -230,5 +231,11 @@ public class InvokeDynamicWriter extends InvocationWriter {
     @Override
     public void makeSingleArgumentCall(Expression receiver, String message, Expression arguments) {
         makeIndyCall(null, receiver, false, false, message, arguments);
+    }
+
+    public void writeGetProperty(Expression receiver, String name,
+            boolean safe, boolean implicitThis, boolean b) {
+        //TODO: implement
+        throw new GroovyBugError("NYI InvokeDynamicWriter#writeGetProperty");
     }
 }
