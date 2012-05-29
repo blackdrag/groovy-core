@@ -64,7 +64,7 @@ public class IndyInterface {
      */
     
         private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
-        private static final MethodHandle SELECT_METHOD;
+        private static final MethodHandle SELECT_METHOD, SELECT_PROPERTY;
         static {
             MethodType mt = MethodType.methodType(Object.class, MutableCallSite.class, Class.class, String.class, Boolean.class, Boolean.class, Object.class, Object[].class);
             try {
@@ -72,15 +72,23 @@ public class IndyInterface {
             } catch (Exception e) {
                 throw new GroovyBugError(e);
             }
+            mt = MethodType.methodType(Object.class, MutableCallSite.class, Class.class, String.class, int.class, Object.class);
+            try {
+                SELECT_PROPERTY = LOOKUP.findStatic(IndyInterface.class, "selectProperty", mt);
+            } catch (Exception e) {
+                throw new GroovyBugError(e);
+            }
         }
         private static final MethodType GENERAL_INVOKER_SIGNATURE = MethodType.methodType(Object.class, Object.class, Object[].class);
         private static final MethodType INVOKE_METHOD_SIGNATURE = MethodType.methodType(Object.class, Class.class, Object.class, String.class, Object[].class, boolean.class, boolean.class);
         private static final MethodType O2O = MethodType.methodType(Object.class, Object.class);
+        private static final MethodType S2O = MethodType.methodType(Object.class, String.class);
         private static final MethodHandle   
             UNWRAP_METHOD,  TO_STRING,          TO_BYTE,        
             TO_BIGINT,      SAME_MC,            IS_NULL,
             IS_NOT_NULL,    UNWRAP_EXCEPTION,   SAME_CLASS,
-            META_METHOD_INVOKER,    GROOVY_OBJECT_INVOKER;
+            META_METHOD_INVOKER,    GROOVY_OBJECT_INVOKER,
+            GROOVY_OBJECT_GET;
         static {
             try {
                 UNWRAP_METHOD = LOOKUP.findStatic(IndyInterface.class, "unwrap", O2O);
@@ -94,6 +102,7 @@ public class IndyInterface {
                 SAME_CLASS = LOOKUP.findStatic(IndyInterface.class, "sameClass", MethodType.methodType(boolean.class, Class.class, Object.class));
                 META_METHOD_INVOKER = LOOKUP.findVirtual(MetaMethod.class, "invoke", GENERAL_INVOKER_SIGNATURE);
                 GROOVY_OBJECT_INVOKER = LOOKUP.findStatic(IndyInterface.class, "invokeGroovyObjectInvoker", MethodType.methodType(Object.class, MissingMethodException.class, Object.class, String.class, Object[].class));
+                GROOVY_OBJECT_GET = LOOKUP.findVirtual(GroovyObject.class, "getProperty", S2O);
             } catch (Exception e) {
                 throw new GroovyBugError(e);
             }
@@ -148,15 +157,34 @@ public class IndyInterface {
             // that does the method selection including the the direct call to the 
             // real method.
             MutableCallSite mc = new MutableCallSite(type);
-            MethodHandle mh = makeFallBack(mc,caller.lookupClass(),name,type,safe,thisCall);
+            MethodHandle mh = makeMethodFallBack(mc,caller.lookupClass(),name,type,safe,thisCall);
             mc.setTarget(mh);
             return mc;            
         }
         
         /**
+         * bytecode entry point for get property calls
+         */
+        public static CallSite bootstrapGetProperty(Lookup caller, String name, MethodType type, int callType) {
+            MutableCallSite mc = new MutableCallSite(type);
+            MethodHandle mh = makePropertyFallBack(mc,caller.lookupClass(),name,type,callType);
+            mc.setTarget(mh);
+            return mc;           
+        }
+
+        /**
+         * Makes a fallback method for invalidate property selection
+         */
+        private static MethodHandle makePropertyFallBack(MutableCallSite mc, Class<?> sender, String name, MethodType type, int callType) {
+            MethodHandle mh =   MethodHandles.insertArguments(SELECT_PROPERTY, 0, mc, sender, name, callType).
+            asType(type);
+            return mh;
+        }
+        
+        /**
          * Makes a fallback method for an invalidated method selection
          */
-        private static MethodHandle makeFallBack(MutableCallSite mc, Class<?> sender, String name, MethodType type, boolean safeNavigation, boolean thisCall) {
+        private static MethodHandle makeMethodFallBack(MutableCallSite mc, Class<?> sender, String name, MethodType type, boolean safeNavigation, boolean thisCall) {
             MethodHandle mh = MethodHandles.insertArguments(SELECT_METHOD, 0, mc, sender, name, safeNavigation, thisCall, /*dummy receiver:*/ 1);
             mh =    mh.asCollector(Object[].class, type.parameterCount()).
                     asType(type);
@@ -190,15 +218,15 @@ public class IndyInterface {
             public Object[] args;
             public MetaMethod method;
             public MethodType targetType;
-            public String methodName;
+            public String name;
             public MethodHandle handle;
             public boolean useMetaClass = false;
             public MutableCallSite callSite;
             public Class sender;
             public boolean isVargs;
-            public boolean safeNavigation;
+            public boolean safeNavigation, safeNavigationOrig;
             public boolean thisCall;
-            public Class methodSelectionBase;
+            public Class selector;
         }
         
         /**
@@ -277,9 +305,9 @@ public class IndyInterface {
             } 
             
             if (receiver instanceof Class) {
-                ci.method = mci.retrieveStaticMethod(ci.methodName, removeRealReceiver(ci.args));
+                ci.method = mci.retrieveStaticMethod(ci.name, removeRealReceiver(ci.args));
             } else {
-                ci.method = mci.getMethodWithCaching(ci.methodSelectionBase, ci.methodName, removeRealReceiver(ci.args), false);
+                ci.method = mci.getMethodWithCaching(ci.selector, ci.name, removeRealReceiver(ci.args), false);
             }
         }
         
@@ -307,7 +335,7 @@ public class IndyInterface {
                     
                     ci.handle = ci.handle.bindTo(mc);
                     if (!useShortForm) {
-                        ci.handle = ci.handle.bindTo(ci.methodSelectionBase);
+                        ci.handle = ci.handle.bindTo(ci.selector);
                     }
                     
                     if (receiver instanceof GroovyObject) {
@@ -316,7 +344,7 @@ public class IndyInterface {
                         ci.handle = MethodHandles.catchException(ci.handle, MissingMethodException.class, GROOVY_OBJECT_INVOKER);
                     }
                 }
-                ci.handle = MethodHandles.insertArguments(ci.handle, 1, ci.methodName);
+                ci.handle = MethodHandles.insertArguments(ci.handle, 1, ci.name);
                 ci.handle = ci.handle.asCollector(Object[].class, ci.targetType.parameterCount()-1);
             } catch (Exception e) {
                 throw new GroovyBugError(e);
@@ -492,7 +520,7 @@ public class IndyInterface {
         private static void setGuards(CallInfo ci, Object receiver) {
             if (ci.handle==null) return;
             
-            MethodHandle fallback = makeFallBack(ci.callSite, ci.sender, ci.methodName, ci.targetType, ci.safeNavigation, ci.thisCall);
+            MethodHandle fallback = makeMethodFallBack(ci.callSite, ci.sender, ci.name, ci.targetType, ci.safeNavigation, ci.thisCall);
             
             // special guards for receiver
             if (receiver instanceof GroovyObject) {
@@ -636,15 +664,32 @@ public class IndyInterface {
         /**
          * Sets the method selection base.
          */
-        private static void setMethodSelectionBase(CallInfo ci, MetaClass mc) {
+        private static void setSelector(CallInfo ci, MetaClass mc) {
             if (ci.thisCall) {
-                ci.methodSelectionBase = ci.sender;
+                ci.selector = ci.sender;
             } else if (ci.args[0]==null) {
-                ci.methodSelectionBase = NullObject.class;
+                ci.selector = NullObject.class;
             } else {
-                ci.methodSelectionBase = mc.getTheClass();
+                ci.selector = mc.getTheClass();
             }
         }
+
+        public static Object selectProperty(MutableCallSite callSite, Class sender, String propertyName, int callType, Object receiver) throws Throwable {
+            boolean safeNavigation = (callType & 4)!=0;
+            boolean groovyObject = (callType & 2)!=0;
+
+            CallInfo callInfo = new CallInfo();
+            callInfo.targetType = callSite.type();
+            callInfo.name = propertyName;
+            callInfo.args = new Object[]{receiver};
+            callInfo.callSite = callSite;
+            callInfo.sender = sender;
+            callInfo.safeNavigationOrig = safeNavigation;
+            callInfo.safeNavigation = safeNavigation && receiver==null;
+            callInfo.thisCall = false;
+            throw new GroovyBugError("NYI");
+        }
+
         
         /**
          * Core method for indy method selection using runtime types.
@@ -653,7 +698,7 @@ public class IndyInterface {
             //TODO: handle GroovyInterceptable 
             CallInfo callInfo = new CallInfo();
             callInfo.targetType = callSite.type();
-            callInfo.methodName = methodName;
+            callInfo.name = methodName;
             callInfo.args = arguments;
             callInfo.callSite = callSite;
             callInfo.sender = sender;
@@ -663,7 +708,7 @@ public class IndyInterface {
             if (!setNullForSafeNavigation(callInfo)) {
                 //            setInterceptableHandle(callInfo);
                 MetaClass mc = getMetaClass(callInfo.args[0]);
-                setMethodSelectionBase(callInfo, mc);
+                setSelector(callInfo, mc);
                 chooseMethod(mc, callInfo);
                 setHandleForMetaMethod(callInfo);
                 setMetaClassCallHandleIfNedded(mc, callInfo);
