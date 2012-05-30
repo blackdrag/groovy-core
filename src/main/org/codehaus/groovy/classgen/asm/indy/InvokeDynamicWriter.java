@@ -133,7 +133,7 @@ public class InvokeDynamicWriter extends InvocationWriter {
             String methodName = getMethodName(message);
             
             if (methodName != null) {
-                makeIndyCall(adapter, receiver, implicitThis, safe, methodName, arguments);
+                makeIndyCall(adapter, receiver, implicitThis, safe, methodName, arguments, (ClassNode) origin.getNodeMetaData("CallsiteReturnType"));
                 return;
             }
         }
@@ -205,17 +205,18 @@ public class InvokeDynamicWriter extends InvocationWriter {
         return "("+getTypeDescription(operandStack.getTopOperand());
     }
 
-    private void finishIndyCall(Handle bsmHandle, String methodName, String sig, int numberOfArguments, Object... bsmArgs) {
+    private void finishIndyCall(Handle bsmHandle, String methodName, String sig, ClassNode retType, int numberOfArguments, Object... bsmArgs) {
         CompileStack compileStack = controller.getCompileStack();
         OperandStack operandStack = controller.getOperandStack();
 
         controller.getMethodVisitor().visitInvokeDynamicInsn(methodName, sig, bsmHandle, bsmArgs);
 
-        operandStack.replace(ClassHelper.OBJECT_TYPE, numberOfArguments);
+        if (retType==null) retType=ClassHelper.OBJECT_TYPE;
+        operandStack.replace(retType, numberOfArguments);
         compileStack.popLHS();
     }
 
-    private void makeIndyCall(MethodCallerMultiAdapter adapter, Expression receiver, boolean implicitThis, boolean safe, String methodName, Expression arguments) {
+    private void makeIndyCall(MethodCallerMultiAdapter adapter, Expression receiver, boolean implicitThis, boolean safe, String methodName, Expression arguments, ClassNode callsiteReturnType) {
         OperandStack operandStack = controller.getOperandStack();
 
         String sig = prepareIndyCall(receiver,implicitThis);
@@ -234,10 +235,14 @@ public class InvokeDynamicWriter extends InvocationWriter {
             }
             numberOfArguments++;
         }
-        sig += ")Ljava/lang/Object;";
+        if (callsiteReturnType!=null) {
+            sig += ")"+getTypeDescription(callsiteReturnType);
+        } else {
+            sig += ")Ljava/lang/Object;";
+        }
         
         Handle bsmHandle = getBsmHandle(adapter, safe);
-        finishIndyCall(bsmHandle,methodName,sig,numberOfArguments);
+        finishIndyCall(bsmHandle,methodName,sig,callsiteReturnType,numberOfArguments);
     }
     
     private Handle getBsmHandle(MethodCallerMultiAdapter adapter, boolean safe) {
@@ -252,7 +257,9 @@ public class InvokeDynamicWriter extends InvocationWriter {
 
     @Override
     public void makeSingleArgumentCall(Expression receiver, String message, Expression arguments) {
-        makeIndyCall(null, receiver, false, false, message, arguments);
+        ClassNode ret = (ClassNode) receiver.getNodeMetaData("CallsiteReturnType");
+        receiver.removeNodeMetaData("CallsiteReturnType");
+        makeIndyCall(null, receiver, false, false, message, arguments, ret);
     }
 
     private int getPropertyHandleIndex(boolean safe, boolean implicitThis, boolean groovyObject) {
@@ -267,7 +274,7 @@ public class InvokeDynamicWriter extends InvocationWriter {
         String sig = prepareIndyCall(receiver, implicitThis);
         sig += ")Ljava/lang/Object;";
         int index = getPropertyHandleIndex(safe,implicitThis,groovyObject);
-        finishIndyCall(GET_PROPERTY_BSM, propertyName, sig, 1, index);
+        finishIndyCall(GET_PROPERTY_BSM, propertyName, sig, ClassHelper.OBJECT_TYPE, index);
     }
     
     @Override

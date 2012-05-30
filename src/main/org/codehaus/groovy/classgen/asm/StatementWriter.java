@@ -577,8 +577,9 @@ public class StatementWriter {
             mv.visitInsn(RETURN);
             return;
         }
-
+        
         Expression expression = statement.getExpression();
+        expression.setNodeMetaData("CallsiteReturnType", returnType);
         expression.visit(controller.getAcg());
         
         if (controller.getCompileStack().hasBlockRecorder()) {

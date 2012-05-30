@@ -486,6 +486,8 @@ public class BinaryExpressionHelper {
         Expression receiver = binExp.getLeftExpression();
         Expression arguments = binExp.getRightExpression();
 
+        receiver.setNodeMetaData("CallsiteReturnType", binExp.getNodeMetaData("CallsiteReturnType"));
+        
         // ensure VariableArguments are read, not stored
         compileStack.pushLHS(false);
         controller.getInvocationWriter().makeSingleArgumentCall(receiver, message, arguments);
