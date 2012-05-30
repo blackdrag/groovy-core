@@ -214,21 +214,6 @@ public class IndyInterface {
             }
         }
         
-        private static class CallInfo {
-            public Object[] args;
-            public MetaMethod method;
-            public MethodType targetType;
-            public String name;
-            public MethodHandle handle;
-            public boolean useMetaClass = false;
-            public MutableCallSite callSite;
-            public Class sender;
-            public boolean isVargs;
-            public boolean safeNavigation, safeNavigationOrig;
-            public boolean thisCall;
-            public Class selector;
-        }
-        
         /**
          * Returns if a method is static
          */
