@@ -520,7 +520,7 @@ public class IndyInterface {
         private static void setGuards(CallInfo ci, Object receiver) {
             if (ci.handle==null) return;
             
-            MethodHandle fallback = makeMethodFallBack(ci.callSite, ci.sender, ci.name, ci.targetType, ci.safeNavigation, ci.thisCall);
+            MethodHandle fallback = makeMethodFallBack(ci.callSite, ci.sender, ci.name, ci.targetType, ci.safeNavigationOrig, ci.thisCall);
             
             // special guards for receiver
             if (receiver instanceof GroovyObject) {
@@ -702,6 +702,7 @@ public class IndyInterface {
             callInfo.args = arguments;
             callInfo.callSite = callSite;
             callInfo.sender = sender;
+            callInfo.safeNavigationOrig = safeNavigation;
             callInfo.safeNavigation = safeNavigation && arguments[0]==null;
             callInfo.thisCall = thisCall;
 
