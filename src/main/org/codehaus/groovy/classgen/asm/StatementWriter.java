@@ -579,7 +579,9 @@ public class StatementWriter {
         }
         
         Expression expression = statement.getExpression();
-        expression.setNodeMetaData("CallsiteReturnType", returnType);
+        if (expression.getNodeMetaData("CallsiteReturnType")==null) {
+            expression.setNodeMetaData("CallsiteReturnType", returnType);
+        }
         expression.visit(controller.getAcg());
         
         if (controller.getCompileStack().hasBlockRecorder()) {
