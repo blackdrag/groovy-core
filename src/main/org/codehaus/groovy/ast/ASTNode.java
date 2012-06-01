@@ -18,10 +18,6 @@ package org.codehaus.groovy.ast;
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.util.ListHashMap;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
 /**
  * Base class for any AST node. This class supports basic information used in all
  * nodes of the AST<ul>
