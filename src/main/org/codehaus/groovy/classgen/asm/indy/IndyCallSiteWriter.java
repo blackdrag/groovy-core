@@ -15,8 +15,11 @@
  */
 package org.codehaus.groovy.classgen.asm.indy;
 
+import org.codehaus.groovy.ast.expr.ConstantExpression;
 import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.classgen.asm.*;
+
+import static org.codehaus.groovy.classgen.asm.InvocationWriter.*;
 
 /**
  * Dummy class used by the indy implementation.
@@ -34,10 +37,6 @@ public class IndyCallSiteWriter extends CallSiteWriter {
     
     @Override
     public void generateCallSiteArray() {}
-    @Override
-    public void makeCallSite(Expression receiver, String message,
-            Expression arguments, boolean safe, boolean implicitThis,
-            boolean callCurrent, boolean callStatic) {}
     @Override
     public void makeSingleArgumentCall(Expression receiver, String message, Expression arguments) {}
     @Override
@@ -58,4 +57,16 @@ public class IndyCallSiteWriter extends CallSiteWriter {
         idw.writeGetProperty(receiver, name, safe, implicitThis, true);
     }
     
+    @Override
+    public void makeCallSite(Expression receiver, String message,
+            Expression arguments, boolean safe, boolean implicitThis,
+            boolean callCurrent, boolean callStatic)
+    {
+        MethodCallerMultiAdapter adapter = invokeMethod;
+        if (callStatic) adapter = invokeStaticMethod;
+        if (callCurrent) adapter = invokeMethodOnCurrent;
+
+        InvokeDynamicWriter idw = (InvokeDynamicWriter)controller.getInvocationWriter();
+        idw.makeCall(receiver, receiver, new ConstantExpression(message), arguments, adapter, safe, false, implicitThis);
+    }
 }
